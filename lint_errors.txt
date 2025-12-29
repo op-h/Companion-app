@@ -1,0 +1,114 @@
+
+> study-companion@0.1.0 lint
+> eslint
+
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\app\[subject]\page.tsx
+  5:11  warning  'Params' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\app\api\pdf\route.ts
+  3:8  warning  'path' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\DashboardClient.tsx
+  26:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\DashboardClient.tsx:26:5
+  24 |
+  25 |   useEffect(() => {
+> 26 |     setFilteredSubjects(
+     |     ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  27 |       subjects.filter(s => s.name.toLowerCase().includes(search.toLowerCase()))
+  28 |     );
+  29 |  react-hooks/set-state-in-effect
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\FlashcardManager.tsx
+   4:41  warning  'Check' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       @typescript-eslint/no-unused-vars
+   5:18  warning  'AnimatePresence' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  16:16  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\FlashcardManager.tsx:16:16
+  14 |   useEffect(() => {
+  15 |     const saved = localStorage.getItem(`flashcards-${subject}`);
+> 16 |     if (saved) setCards(JSON.parse(saved));
+     |                ^^^^^^^^ Avoid calling setState() directly within an effect
+  17 |   }, [subject]);
+  18 |
+  19 |   // Save  react-hooks/set-state-in-effect
+  92:52  error    Unexpected any. Specify a different type                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-explicit-any
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\PDFViewer.tsx
+   5:113  warning  'RotateCcw' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+  33:20   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\PDFViewer.tsx:33:20
+  31 |   useEffect(() => {
+  32 |     const savedPage = localStorage.getItem(`progress-${pdfName}`);
+> 33 |     if (savedPage) setPageNumber(parseInt(savedPage));
+     |                    ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  34 |
+  35 |     const bookmarks = JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
+  36 |     setIsBookmarked(bookmarks.includes(pageNumber));  react-hooks/set-state-in-effect
+  46:7    error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\PDFViewer.tsx:46:7
+  44 |
+  45 |       const bookmarks = JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
+> 46 |       setIsBookmarked(bookmarks.includes(pageNumber));
+     |       ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  47 |     }
+  48 |   }, [pageNumber, pdfName, subjectName]);
+  49 |                                                                                                        react-hooks/set-state-in-effect
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\PomodoroTimer.tsx
+   3:31  warning  'useRef' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+   4:43  warning  'VolumeX' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 @typescript-eslint/no-unused-vars
+  25:7   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\PomodoroTimer.tsx:25:7
+  23 |       }, 1000);
+  24 |     } else if (timeLeft === 0) {
+> 25 |       setIsActive(false);
+     |       ^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  26 |       // Play notification sound here
+  27 |       alert("Time's up!");
+  28 |     }  react-hooks/set-state-in-effect
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\components\StudySidebar.tsx
+    7:10   warning  'motion' is defined but never used        @typescript-eslint/no-unused-vars
+  164:106  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\husse\Downloads\stage3_F\study-companion\src\lib\content.ts
+  50:12  warning  'error' is defined but never used  @typescript-eslint/no-unused-vars
+
+Γ£û 16 problems (7 errors, 9 warnings)
+

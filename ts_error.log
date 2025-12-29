@@ -1,0 +1,7 @@
+src/app/[subject]/[pdf]/page.tsx(2,23): error TS2307: Cannot find module '@/components/PDFViewer' or its corresponding type declarations.
+src/app/[subject]/[pdf]/page.tsx(3,26): error TS2307: Cannot find module '@/components/StudySidebar' or its corresponding type declarations.
+src/app/[subject]/page.tsx(2,32): error TS2307: Cannot find module '@/lib/content' or its corresponding type declarations.
+src/app/[subject]/page.tsx(37,22): error TS7006: Parameter 'pdf' implicitly has an 'any' type.
+src/app/api/pdf/route.ts(4,28): error TS2307: Cannot find module '@/lib/content' or its corresponding type declarations.
+src/app/page.tsx(2,29): error TS2307: Cannot find module '@/lib/content' or its corresponding type declarations.
+src/app/page.tsx(30,26): error TS7006: Parameter 'subject' implicitly has an 'any' type.
