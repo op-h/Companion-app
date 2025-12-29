@@ -16,6 +16,7 @@ export default function PomodoroTimer() {
    const [mode, setMode] = useState<'focus' | 'break'>('focus');
    const [showSettings, setShowSettings] = useState(false);
    const [soundEnabled, setSoundEnabled] = useState(false);
+   const [isMinimized, setIsMinimized] = useState(true);
 
    const constraintsRef = useRef(null);
 
@@ -53,8 +54,6 @@ export default function PomodoroTimer() {
    const applySettings = (newFocus: number, newBreak: number) => {
       setFocusDuration(newFocus);
       setBreakDuration(newBreak);
-      // Only reset if currently stopped to avoid interrupting flow? 
-      // Actually simpler to just reset current timer if mode matches config change
       if (!isActive) {
          setTimeLeft(mode === 'focus' ? newFocus * 60 : newBreak * 60);
       }
@@ -72,7 +71,6 @@ export default function PomodoroTimer() {
 
    return (
       <>
-         {/* Full screen constraints container (invisible) */}
          <div ref={constraintsRef} className="fixed inset-0 pointer-events-none z-[100]" />
 
          <motion.div
@@ -80,132 +78,181 @@ export default function PomodoroTimer() {
             dragMomentum={false}
             dragConstraints={constraintsRef}
             initial={{ right: 24, bottom: 24 }}
-            className="fixed z-[100] flex flex-col items-center gap-2 pointer-events-auto cursor-grab active:cursor-grabbing"
+            className="fixed z-[100] pointer-events-auto"
+            layout
          >
-            {/* Main Widget */}
-            <div className="bg-slate-900/90 backdrop-blur-xl border border-white/10 p-1 rounded-3xl shadow-2xl flex flex-col items-center gap-2 relative overflow-hidden group">
-
-               {/* Drag Handle */}
-               <div className="w-full flex justify-center py-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                  <GripHorizontal className="w-4 h-4 text-slate-500" />
-               </div>
-
-               {/* Glass Reflection */}
-               <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none rounded-3xl" />
-
-               {/* Header / Mode Switch */}
-               <div className="flex items-center justify-between w-full px-4 pt-1 pb-1">
-                  <span className={clsx("text-xs font-bold uppercase tracking-wider transition-colors", mode === 'focus' ? "text-cyan-400" : "text-purple-400")}>
-                     {mode === 'focus' ? 'Focus' : 'Break'}
-                  </span>
-                  <div className="flex gap-2">
-                     <button
-                        onClick={() => setSoundEnabled(!soundEnabled)}
-                        className={clsx("p-1.5 rounded-full hover:bg-white/10 transition-colors pointer-events-auto", soundEnabled ? "text-white" : "text-slate-600")}
-                        onPointerDownCapture={(e) => e.stopPropagation()} // Prevent drag when clicking button
-                     >
-                        <Volume2 className="w-3.5 h-3.5" />
-                     </button>
-                     <button
-                        onClick={() => setShowSettings(!showSettings)}
-                        className={clsx("p-1.5 rounded-full hover:bg-white/10 transition-colors pointer-events-auto", showSettings ? "text-white bg-white/10" : "text-slate-500")}
-                        onPointerDownCapture={(e) => e.stopPropagation()} // Prevent drag
-                     >
-                        <Settings2 className="w-3.5 h-3.5" />
-                     </button>
-                  </div>
-               </div>
-
-               {/* Time Display with Progress Ring */}
-               <div className="relative w-40 h-24 flex items-center justify-center">
-                  <div className="text-4xl font-mono font-bold text-white tracking-widest z-10 drop-shadow-lg">
-                     {formatTime(timeLeft)}
-                  </div>
-                  {/* Simple Background Bar for Visual Flair */}
-                  <div className="absolute bottom-4 left-4 right-4 h-1 bg-white/5 rounded-full overflow-hidden">
-                     <motion.div
-                        className={clsx("h-full", mode === 'focus' ? "bg-cyan-500" : "bg-purple-500")}
-                        animate={{ width: `${100 - (timeLeft / totalTime) * 100}%` }}
-                        transition={{ duration: 1, ease: "linear" }}
-                     />
-                  </div>
-               </div>
-
-               {/* Controls */}
-               <div className="flex items-center gap-4 pb-4">
-                  <button
-                     onClick={resetTimer}
-                     onPointerDownCapture={(e) => e.stopPropagation()}
-                     className="p-2 rounded-xl text-slate-500 hover:text-white hover:bg-white/5 transition-all"
-                     title="Reset"
-                  >
-                     <RotateCcw className="w-4 h-4" />
-                  </button>
-
-                  <button
-                     onClick={toggleTimer}
-                     onPointerDownCapture={(e) => e.stopPropagation()}
+            <AnimatePresence mode="wait">
+               {isMinimized ? (
+                  <motion.button
+                     key="minimized"
+                     initial={{ scale: 0.8, opacity: 0 }}
+                     animate={{ scale: 1, opacity: 1 }}
+                     exit={{ scale: 0.8, opacity: 0 }}
+                     onClick={() => setIsMinimized(false)}
                      className={clsx(
-                        "w-12 h-12 flex items-center justify-center rounded-2xl shadow-lg transition-all transform hover:scale-105 active:scale-95 pointer-events-auto",
-                        isActive
-                           ? "bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-red-900/20"
-                           : mode === 'focus'
-                              ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-cyan-900/20"
-                              : "bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-purple-900/20"
+                        "w-16 h-16 rounded-full flex items-center justify-center shadow-2xl backdrop-blur-xl border border-white/20 cursor-pointer relative group overflow-hidden",
+                        mode === 'focus' ? "bg-cyan-600/80" : "bg-purple-600/80"
                      )}
+                     layoutId="timer-body"
                   >
-                     {isActive ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
-                  </button>
+                     {/* Progress Ring for Circle */}
+                     <svg className="absolute inset-0 w-full h-full -rotate-90">
+                        <circle
+                           cx="32"
+                           cy="32"
+                           r="30"
+                           stroke="rgba(255,255,255,0.1)"
+                           strokeWidth="4"
+                           fill="transparent"
+                        />
+                        <motion.circle
+                           cx="32"
+                           cy="32"
+                           r="30"
+                           stroke="white"
+                           strokeWidth="4"
+                           fill="transparent"
+                           strokeDasharray="188.5"
+                           animate={{ strokeDashoffset: 188.5 - (188.5 * (1 - timeLeft / totalTime)) }}
+                           transition={{ duration: 1, ease: "linear" }}
+                        />
+                     </svg>
 
-                  <button
-                     onClick={switchMode}
-                     onPointerDownCapture={(e) => e.stopPropagation()}
-                     className="p-2 rounded-xl text-slate-500 hover:text-white hover:bg-white/5 transition-all text-xs font-semibold"
+                     <div className="flex flex-col items-center z-10">
+                        <span className="text-[10px] font-bold text-white/70 uppercase mb-px">Time</span>
+                        <span className="text-xs font-mono font-bold text-white leading-none">
+                           {formatTime(timeLeft)}
+                        </span>
+                     </div>
+                  </motion.button>
+               ) : (
+                  <motion.div
+                     key="expanded"
+                     initial={{ scale: 0.8, opacity: 0 }}
+                     animate={{ scale: 1, opacity: 1 }}
+                     exit={{ scale: 0.8, opacity: 0 }}
+                     className="bg-slate-900/90 backdrop-blur-xl border border-white/10 p-1 rounded-3xl shadow-2xl flex flex-col items-center gap-2 relative overflow-hidden group w-48"
+                     layoutId="timer-body"
                   >
-                     Switch
-                  </button>
-               </div>
+                     {/* Drag Handle */}
+                     <div className="w-full flex justify-center py-1 opacity-50 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                        <GripHorizontal className="w-4 h-4 text-slate-500" />
+                     </div>
 
-               {/* Settings Overlay */}
-               <AnimatePresence>
-                  {showSettings && (
-                     <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="w-full bg-slate-950/50 backdrop-blur-md border-t border-white/10 overflow-hidden text-left"
-                     >
-                        <div className="p-4 space-y-3" onPointerDownCapture={(e) => e.stopPropagation()}>
-                           <div className="flex items-center justify-between">
-                              <label className="text-xs text-slate-400">Focus Time (min)</label>
-                              <input
-                                 type="number"
-                                 value={focusDuration}
-                                 onChange={(e) => setFocusDuration(Number(e.target.value))}
-                                 className="w-16 bg-slate-800 border border-white/10 rounded px-2 py-1 text-xs text-white text-center focus:border-cyan-500 outline-none"
-                              />
-                           </div>
-                           <div className="flex items-center justify-between">
-                              <label className="text-xs text-slate-400">Break Time (min)</label>
-                              <input
-                                 type="number"
-                                 value={breakDuration}
-                                 onChange={(e) => setBreakDuration(Number(e.target.value))}
-                                 className="w-16 bg-slate-800 border border-white/10 rounded px-2 py-1 text-xs text-white text-center focus:border-purple-500 outline-none"
-                              />
-                           </div>
+                     {/* Header / Mode Switch */}
+                     <div className="flex items-center justify-between w-full px-4 pt-1 pb-1">
+                        <div
+                           className="cursor-pointer"
+                           onClick={() => setIsMinimized(true)}
+                           onPointerDownCapture={(e) => e.stopPropagation()}
+                        >
+                           <span className={clsx("text-[10px] font-bold uppercase tracking-wider transition-colors", mode === 'focus' ? "text-cyan-400" : "text-purple-400")}>
+                              {mode === 'focus' ? 'Focus' : 'Break'}
+                           </span>
+                        </div>
+                        <div className="flex gap-1" onPointerDownCapture={(e) => e.stopPropagation()}>
                            <button
-                              onClick={() => applySettings(focusDuration, breakDuration)}
-                              className="w-full py-2 bg-white/10 hover:bg-white/20 rounded-lg text-xs font-semibold text-white transition-colors"
+                              onClick={() => setSoundEnabled(!soundEnabled)}
+                              className={clsx("p-1 rounded-full hover:bg-white/10 transition-colors", soundEnabled ? "text-white" : "text-slate-600")}
                            >
-                              Done
+                              <Volume2 className="w-3 h-3" />
+                           </button>
+                           <button
+                              onClick={() => setShowSettings(!showSettings)}
+                              className={clsx("p-1 rounded-full hover:bg-white/10 transition-colors", showSettings ? "text-white bg-white/10" : "text-slate-500")}
+                           >
+                              <Settings2 className="w-3 h-3" />
+                           </button>
+                           <button
+                              onClick={() => setIsMinimized(true)}
+                              className="p-1 rounded-full hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                           >
+                              <GripHorizontal className="w-3 h-3 rotate-90" />
                            </button>
                         </div>
-                     </motion.div>
-                  )}
-               </AnimatePresence>
-            </div>
+                     </div>
+
+                     {/* Time Display */}
+                     <div className="relative w-full h-20 flex items-center justify-center">
+                        <div className="text-3xl font-mono font-bold text-white tracking-widest z-10 drop-shadow-lg">
+                           {formatTime(timeLeft)}
+                        </div>
+                        <div className="absolute bottom-2 left-4 right-4 h-1 bg-white/5 rounded-full overflow-hidden">
+                           <motion.div
+                              className={clsx("h-full", mode === 'focus' ? "bg-cyan-500" : "bg-purple-500")}
+                              animate={{ width: `${100 - (timeLeft / totalTime) * 100}%` }}
+                              transition={{ duration: 1, ease: "linear" }}
+                           />
+                        </div>
+                     </div>
+
+                     {/* Controls */}
+                     <div className="flex items-center gap-3 pb-4" onPointerDownCapture={(e) => e.stopPropagation()}>
+                        <button onClick={resetTimer} className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-all">
+                           <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                           onClick={toggleTimer}
+                           className={clsx(
+                              "w-10 h-10 flex items-center justify-center rounded-xl shadow-lg transition-all transform hover:scale-105 active:scale-95",
+                              isActive
+                                 ? "bg-gradient-to-br from-red-500 to-pink-600 text-white shadow-red-900/20"
+                                 : mode === 'focus'
+                                    ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-cyan-900/20"
+                                    : "bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-purple-900/20"
+                           )}
+                        >
+                           {isActive ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+                        </button>
+                        <button onClick={switchMode} className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-all text-[10px] font-bold">
+                           SW
+                        </button>
+                     </div>
+
+                     {/* Settings Overlay */}
+                     <AnimatePresence>
+                        {showSettings && (
+                           <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="w-full bg-slate-950/50 backdrop-blur-md border-t border-white/10 overflow-hidden"
+                              onPointerDownCapture={(e) => e.stopPropagation()}
+                           >
+                              <div className="p-3 space-y-2">
+                                 <div className="flex items-center justify-between">
+                                    <label className="text-[10px] text-slate-400">Focus</label>
+                                    <input
+                                       type="number"
+                                       value={focusDuration}
+                                       onChange={(e) => setFocusDuration(Number(e.target.value))}
+                                       className="w-12 bg-slate-800 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white text-center"
+                                    />
+                                 </div>
+                                 <div className="flex items-center justify-between">
+                                    <label className="text-[10px] text-slate-400">Break</label>
+                                    <input
+                                       type="number"
+                                       value={breakDuration}
+                                       onChange={(e) => setBreakDuration(Number(e.target.value))}
+                                       className="w-12 bg-slate-800 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-white text-center"
+                                    />
+                                 </div>
+                                 <button
+                                    onClick={() => applySettings(focusDuration, breakDuration)}
+                                    className="w-full py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[10px] font-bold text-white"
+                                 >
+                                    Done
+                                 </button>
+                              </div>
+                           </motion.div>
+                        )}
+                     </AnimatePresence>
+                  </motion.div>
+               )}
+            </AnimatePresence>
          </motion.div>
       </>
    );
 }
+
