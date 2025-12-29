@@ -26,11 +26,8 @@ const translations: Translations = {
   'dashboard.noExams': { en: 'No upcoming exams', ar: 'لا توجد اختبارات قادمة' },
 
   // Sidebar
-  'sidebar.quiz': { en: 'Quiz', ar: 'اختبار' },
   'sidebar.notes': { en: 'Notes', ar: 'ملاحظات' },
   'sidebar.cards': { en: 'Cards', ar: 'بطاقات' },
-  'sidebar.generateQuiz': { en: 'Generate Quiz', ar: 'إنشاء اختبار' },
-  'sidebar.testKnowledge': { en: 'Test Your Knowledge', ar: 'اختبر معلوماتك' },
   'sidebar.notesPlaceholder': { en: 'Write your study notes here...', ar: 'اكتب ملاحظاتك الدراسية هنا...' },
   'sidebar.saveNotes': { en: 'Save to LocalStorage', ar: 'حفظ في التخزين المحلي' },
 
