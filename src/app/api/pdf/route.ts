@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   }
 
   // Basic security check
-  // Stricter security check
-  const safePattern = /^[a-zA-Z0-9_\-\.\s]+$/;
+  // Stricter security check - allowed characters: alphanumeric, _, -, ., space, (), [], ,, &
+  const safePattern = /^[a-zA-Z0-9_\-\.\s\(\)\[\]\,&]+$/;
   if (!safePattern.test(subject) || !safePattern.test(file) || subject.includes('..') || file.includes('..')) {
     return new NextResponse('Invalid path parameters', { status: 403 });
   }
