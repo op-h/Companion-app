@@ -8,9 +8,9 @@ const exams = [
   { subject: 'Information Security', date: '2026-01-04T09:00:00' },
   { subject: 'Digital Signal Processing', date: '2026-01-07T09:00:00' },
   { subject: 'Computer Network', date: '2026-01-11T09:00:00' },
-  { subject: 'Python', date: '2026-01-13T09:00:00' },
   { subject: 'Software Eng', date: '2026-01-17T09:00:00' },
   { subject: 'Digital Forensics', date: '2026-01-19T09:00:00' },
+  { subject: 'Python', date: '2026-01-21T09:00:00' },
 ];
 
 export default function ExamCountdown() {
