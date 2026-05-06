@@ -1,15 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Loader2, Maximize2, Minimize2, Bookmark, Home as HomeIcon } from 'lucide-react';
+import {
+  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  Home as HomeIcon,
+  Columns2,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  ScrollText,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
 import Link from 'next/link';
-import { clsx } from 'clsx';
-import { motion, AnimatePresence } from 'framer-motion';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-// Set worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 interface PDFViewerProps {
@@ -20,255 +29,290 @@ interface PDFViewerProps {
 }
 
 export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PDFViewerProps) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const pageNumberRef = useRef(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [scale, setScale] = useState(1.0);
-  const [loading, setLoading] = useState(true);
-  const [zenMode, setZenMode] = useState(false);
-  const [isBookmarked, setIsBookmarked] = useState(false);
-
-  // Load progress/bookmark from localStorage
-  useEffect(() => {
+  const [pageNumber, setPageNumber] = useState(() => {
+    if (typeof window === 'undefined') return 1;
     const savedPage = localStorage.getItem(`progress-${pdfName}`);
-    if (savedPage) {
-      // Avoid effect race conditions by functional update if needed, but here simple set is fine. 
-      // If linter complains about sync set in effect, it's because it behaves like mount.
-      setPageNumber(parseInt(savedPage));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return savedPage ? Number(savedPage) : 1;
+  });
+  const [scale, setScale] = useState(1);
+  const [fitWidth, setFitWidth] = useState(760);
+  const [zenMode, setZenMode] = useState(false);
+  const [viewMode, setViewMode] = useState<'page' | 'scroll'>('page');
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [bookmarks, setBookmarks] = useState<number[]>(() => {
+    if (typeof window === 'undefined') return [];
+    return JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
+  });
+  const isBookmarked = bookmarks.includes(pageNumber);
+  const progressWidth = viewMode === 'scroll' ? scrollProgress : (pageNumber / (numPages || 1)) * 100;
 
-    const bookmarks = JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
-    setIsBookmarked(bookmarks.includes(pageNumber));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdfName]);
-
-  // Save progress on page change
   useEffect(() => {
-    if (pageNumber > 0) {
-      localStorage.setItem(`progress-${pdfName}`, pageNumber.toString());
-      localStorage.setItem(`last-read-pdf`, JSON.stringify({ subject: subjectName, name: pdfName, page: pageNumber, date: Date.now() }));
+    pageNumberRef.current = pageNumber;
+  }, [pageNumber]);
 
-      const bookmarks = JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
-      setIsBookmarked(bookmarks.includes(pageNumber));
-    }
-  }, [pageNumber, pdfName, subjectName]);
-
-  // Keyboard Navigation
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
-      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+    const container = scrollRef.current;
+    if (!container) return;
 
-      switch (e.key) {
-        case 'ArrowLeft':
-          setPageNumber(prev => Math.max(prev - 1, 1));
-          break;
-        case 'ArrowRight':
-          setPageNumber(prev => Math.min(prev + 1, numPages || prev));
-          break;
-        case 'Escape':
-          if (zenMode) {
-            setZenMode(false);
-            onToggleZen(false);
-          }
-          break;
-        case '+':
-        case '=': // Check for = because + often requires Shift
-          setScale(prev => Math.min(prev + 0.2, 2.5));
-          break;
-        case '-':
-          setScale(prev => Math.max(prev - 0.2, 0.5));
-          break;
-        case '0':
-          setScale(1.0);
-          break;
-      }
+    const observer = new ResizeObserver(([entry]) => {
+      const nextWidth = Math.max(280, Math.min(980, entry.contentRect.width - 32));
+      setFitWidth(nextWidth);
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const toggleZen = useCallback(() => {
+    setZenMode((current) => {
+      onToggleZen(!current);
+      return !current;
+    });
+  }, [onToggleZen]);
+
+  useEffect(() => {
+    const savedAt = Date.now();
+    localStorage.setItem(`progress-${pdfName}`, pageNumber.toString());
+    localStorage.setItem(
+      'last-read-pdf',
+      JSON.stringify({ subject: subjectName, name: pdfName, page: pageNumber, date: savedAt })
+    );
+
+    const progressMap = JSON.parse(localStorage.getItem('study-progress') || '{}');
+    const subjectProgress = progressMap[subjectName] || {};
+    const previous = subjectProgress[pdfName] || {};
+
+    progressMap[subjectName] = {
+      ...subjectProgress,
+      [pdfName]: {
+        page: pageNumber,
+        totalPages: numPages || previous.totalPages || pageNumber,
+        updatedAt: savedAt,
+      },
+    };
+
+    localStorage.setItem('study-progress', JSON.stringify(progressMap));
+  }, [numPages, pageNumber, pdfName, subjectName]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.target as HTMLElement).tagName === 'INPUT' || (event.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+      if (viewMode === 'page' && event.key === 'ArrowLeft') setPageNumber((current) => Math.max(current - 1, 1));
+      if (viewMode === 'page' && event.key === 'ArrowRight') setPageNumber((current) => Math.min(current + 1, numPages || current));
+      if (event.key === 'Escape' && zenMode) toggleZen();
+      if (event.key === '+' || event.key === '=') setScale((current) => Math.min(current + 0.15, 2.5));
+      if (event.key === '-') setScale((current) => Math.max(current - 0.15, 0.5));
+      if (event.key === '0') setScale(1);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [numPages, zenMode, onToggleZen]); // Dependencies needed for state access
+  }, [numPages, toggleZen, viewMode, zenMode]);
+
+  const handleScroll = useCallback(() => {
+    if (viewMode !== 'scroll' || !scrollRef.current || !numPages) return;
+
+    const container = scrollRef.current;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    const nextProgress = maxScroll > 0 ? (container.scrollTop / maxScroll) * 100 : 100;
+    setScrollProgress(Math.min(100, Math.max(0, nextProgress)));
+
+    const anchorY = container.getBoundingClientRect().top + Math.min(180, container.clientHeight * 0.35);
+    let visiblePage = pageNumberRef.current;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (let page = 1; page <= numPages; page += 1) {
+      const element = pageRefs.current[page];
+      if (!element) continue;
+      const rect = element.getBoundingClientRect();
+      const distance = Math.abs(rect.top - anchorY);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        visiblePage = page;
+      }
+    }
+
+    setPageNumber((current) => (current === visiblePage ? current : visiblePage));
+  }, [numPages, viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== 'scroll') return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        pageRefs.current[pageNumberRef.current]?.scrollIntoView({ block: 'start' });
+        handleScroll();
+      });
+    });
+  }, [handleScroll, numPages, viewMode]);
 
   const toggleBookmark = () => {
-    const bookmarks = JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
-    let newBookmarks;
-    if (isBookmarked) {
-      newBookmarks = bookmarks.filter((p: number) => p !== pageNumber);
-    } else {
-      newBookmarks = [...bookmarks, pageNumber];
-    }
-    localStorage.setItem(`bookmarks-${pdfName}`, JSON.stringify(newBookmarks));
-    setIsBookmarked(!isBookmarked);
+    const next = isBookmarked
+      ? bookmarks.filter((page: number) => page !== pageNumber)
+      : [...bookmarks, pageNumber];
 
-    // Force re-render of bookmark status by updating state
-    // (Already handled by the first useEffect but logic was slightly circular, this direct set is better for toggle)
+    localStorage.setItem(`bookmarks-${pdfName}`, JSON.stringify(next));
+    setBookmarks(next);
   };
 
-  const toggleZen = useCallback(() => { // Wrap in callback
-    const newState = !zenMode;
-    setZenMode(newState);
-    onToggleZen(newState);
-  }, [zenMode, onToggleZen]);
+  const goToPage = (targetPage: number) => {
+    const nextPage = Math.min(Math.max(targetPage, 1), numPages || 1);
+    setPageNumber(nextPage);
 
-  function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
-    setNumPages(numPages);
-    setLoading(false);
-  }
+    if (viewMode === 'scroll') {
+      pageRefs.current[nextPage]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   return (
-    <div className={clsx("flex flex-col h-full bg-slate-900 overflow-hidden relative transition-all duration-500", zenMode ? "fixed inset-0 z-50 rounded-none" : "rounded-2xl border border-white/10")}>
+    <div className={`pdf-frame ${zenMode ? 'is-zen' : ''}`}>
+      {zenMode && (
+        <button className="btn btn-primary btn-icon zen-exit" type="button" onClick={toggleZen} title="Exit focus mode">
+          <Minimize2 size={18} />
+        </button>
+      )}
 
-      {/* Zen Mode Exit Button (Floating) - Only visible when header is HIDDEN/Hovered out in Zen Mode? 
-          Actually, let's make it always visible in the corner if Zen is active, or rely on the header hover.
-          User asked for "button to undo", so a persistent floating button is safest if they don't discover hover.
-      */}
-      <AnimatePresence>
-        {zenMode && (
-          <motion.button
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            onClick={toggleZen}
-            className="absolute top-4 right-4 z-50 p-3 bg-red-500/80 hover:bg-red-500 text-white rounded-full shadow-lg backdrop-blur-md transition-all group"
-            title="Exit Full Screen (Esc)"
-          >
-            <Minimize2 className="w-6 h-6" />
-            <span className="absolute right-full mr-2 top-1/2 -translate-y-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity">
-              Exit Zen Mode (Esc)
-            </span>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      {/* Navigation / Header Bar */}
-      <div className={clsx("flex items-center justify-between p-4 bg-slate-800/90 backdrop-blur border-b border-white/10 z-20 absolute top-0 left-0 right-0 transition-transform duration-300", zenMode && "-translate-y-full hover:translate-y-0")}>
-
-        {/* Breadcrumbs */}
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          {!zenMode && (
-            <>
-              <Link href="/" className="hover:text-cyan-400 transition-colors"><HomeIcon className="w-4 h-4" /></Link>
-              <span>/</span>
-              <Link href={`/${encodeURIComponent(subjectName)}`} className="hover:text-cyan-400 transition-colors truncate max-w-[100px]">{subjectName}</Link>
-              <span>/</span>
-            </>
-          )}
-          <span className="text-slate-200 font-medium truncate max-w-[150px]">{pdfName}</span>
+      <div className={`pdf-toolbar ${zenMode ? 'is-hidden' : ''}`}>
+        <div className="crumbs">
+          <Link href="/" title="Dashboard">
+            <HomeIcon size={15} />
+          </Link>
+          <span>/</span>
+          <Link className="truncate desktop-only" href={`/${encodeURIComponent(subjectName)}`}>
+            {subjectName}
+          </Link>
+          <span className="desktop-only">/</span>
+          <span className="truncate">{pdfName}</span>
         </div>
 
-        {/* Page Control */}
-        <div className="flex items-center gap-2 bg-slate-950/50 rounded-lg p-1 border border-white/5">
-          <button
-            onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
-            disabled={pageNumber <= 1}
-            className="p-1.5 hover:bg-white/10 rounded-md disabled:opacity-50 transition-colors"
-            title="Previous Page (Left Arrow)"
-          >
-            <ChevronLeft className="w-4 h-4" />
+        <div className="toolbar-group desktop-reader-controls">
+          <button className="btn btn-icon" type="button" disabled={pageNumber <= 1} onClick={() => goToPage(pageNumber - 1)}>
+            <ChevronLeft size={18} />
           </button>
-          <span className="text-xs font-mono w-20 text-center">
-            {pageNumber} / {numPages || '--'}
-          </span>
-          <button
-            onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages || prev))}
-            disabled={pageNumber >= (numPages || 1)}
-            className="p-1.5 hover:bg-white/10 rounded-md disabled:opacity-50 transition-colors"
-            title="Next Page (Right Arrow)"
-          >
-            <ChevronRight className="w-4 h-4" />
+          <span className="page-counter">{pageNumber} / {numPages || '--'}</span>
+          <button className="btn btn-icon" type="button" disabled={pageNumber >= (numPages || 1)} onClick={() => goToPage(pageNumber + 1)}>
+            <ChevronRight size={18} />
           </button>
         </div>
 
-        {/* Right Tools */}
-        <div className="flex items-center gap-2">
+        <div className="toolbar-group desktop-reader-controls">
           <button
-            onClick={toggleBookmark}
-            className={clsx("p-2 rounded-lg transition-colors", isBookmarked ? "text-yellow-400" : "text-slate-400 hover:bg-white/10")}
-            title="Bookmark this page"
+            className={`btn ${viewMode === 'page' ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => setViewMode('page')}
+            title="Page by page"
           >
-            <Bookmark className={clsx("w-5 h-5", isBookmarked && "fill-yellow-400")} />
+            <Columns2 size={16} />
+            Page
           </button>
-
-          <div className="h-6 w-px bg-white/10 mx-1" />
-
           <button
-            onClick={() => setScale(prev => Math.max(prev - 0.2, 0.5))}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            title="Zoom Out (-)"
+            className={`btn ${viewMode === 'scroll' ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => setViewMode('scroll')}
+            title="Scrollable PDF"
           >
-            <ZoomOut className="w-5 h-5" />
+            <ScrollText size={16} />
+            Scroll
           </button>
-
-          <button
-            onClick={() => setScale(1.0)}
-            className="text-xs font-medium w-12 text-center hover:text-cyan-400 transition-colors"
-            title="Reset Zoom (0)"
-          >
+          <button className={`btn btn-icon ${isBookmarked ? 'is-active' : ''}`} type="button" onClick={toggleBookmark} title="Bookmark page">
+            <Bookmark size={18} fill={isBookmarked ? 'var(--accent)' : 'none'} />
+          </button>
+          <button className="btn btn-icon" type="button" onClick={() => setScale((current) => Math.max(current - 0.15, 0.5))}>
+            <ZoomOut size={18} />
+          </button>
+          <button className="btn" type="button" onClick={() => setScale(1)}>
             {Math.round(scale * 100)}%
           </button>
-
-          <button
-            onClick={() => setScale(prev => Math.min(prev + 0.2, 2.5))}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-slate-400"
-            title="Zoom In (+)"
-          >
-            <ZoomIn className="w-5 h-5" />
+          <button className="btn btn-icon" type="button" onClick={() => setScale((current) => Math.min(current + 0.15, 2.5))}>
+            <ZoomIn size={18} />
           </button>
-
-          <div className="h-6 w-px bg-white/10 mx-1" />
-
-          <button
-            onClick={toggleZen}
-            className={clsx("p-2 rounded-lg transition-colors", zenMode ? "text-cyan-400 bg-cyan-900/20" : "text-slate-400 hover:bg-white/10")}
-            title={zenMode ? "Exit Zen Mode (Esc)" : "Enter Zen Mode"}
-          >
-            {zenMode ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+          <button className="btn btn-icon" type="button" onClick={toggleZen} title="Focus mode">
+            <Maximize2 size={18} />
           </button>
         </div>
       </div>
 
-      {/* Reading Progress Bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-slate-950 z-30">
-        <motion.div
-          className="h-full bg-gradient-to-r from-purple-500 to-cyan-500"
-          initial={{ width: 0 }}
-          animate={{ width: `${(pageNumber / (numPages || 1)) * 100}%` }}
-        />
+      <div className="progress-line">
+        <div className="progress-fill" style={{ width: `${progressWidth}%` }} />
       </div>
 
-      {/* Content */}
-      <div className={clsx("flex-1 overflow-auto flex justify-center bg-slate-950 relative custom-scrollbar", zenMode ? "p-0" : "p-8 pt-16")}>
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Loader2 className="w-8 h-8 animate-spin text-cyan-500" />
-          </div>
-        )}
-
+      <div
+        ref={scrollRef}
+        className={`pdf-scroll ${viewMode === 'scroll' ? 'is-continuous' : ''}`}
+        onScroll={handleScroll}
+      >
         <Document
           file={url}
-          onLoadSuccess={onDocumentLoadSuccess}
-          className={clsx("shadow-2xl transition-all duration-300", zenMode ? "my-0" : "my-4")}
-          loading={
-            <div className="flex items-center gap-2 text-slate-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading PDF...
-            </div>
-          }
-          error={
-            <div className="text-red-400 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
-              Failed to load PDF. Please check if the file exists.
-            </div>
-          }
+          onLoadSuccess={({ numPages: totalPages }) => setNumPages(totalPages)}
+          loading={<div className="loading-state"><Loader2 size={16} className="spin" /> Loading PDF...</div>}
+          error={<div className="error-state">Failed to load PDF. Check the file path.</div>}
         >
-          <Page
-            pageNumber={pageNumber}
-            scale={scale}
-            renderTextLayer={true}
-            renderAnnotationLayer={true}
-            onRenderError={() => { }} // Suppress harmless render cancellation errors
-            className="rounded-lg overflow-hidden shadow-2xl border border-white/5 bg-white"
-          />
+          {viewMode === 'page' ? (
+            <Page
+              pageNumber={pageNumber}
+              width={fitWidth * scale}
+              renderTextLayer={true}
+              renderAnnotationLayer={true}
+              className="pdf-page"
+            />
+          ) : (
+            <div className="pdf-page-stack">
+              {Array.from({ length: numPages || 0 }, (_, index) => (
+                <div
+                  className="pdf-page-anchor"
+                  key={index + 1}
+                  ref={(element) => {
+                    pageRefs.current[index + 1] = element;
+                  }}
+                >
+                  <Page
+                    pageNumber={index + 1}
+                    width={fitWidth * scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="pdf-page"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </Document>
+      </div>
+
+      <div className="mobile-pdf-controls">
+        <div className="mobile-control-row">
+          <button className="btn btn-icon" type="button" disabled={pageNumber <= 1} onClick={() => goToPage(pageNumber - 1)}>
+            <ChevronLeft size={18} />
+          </button>
+          <span className="page-counter">{pageNumber} / {numPages || '--'}</span>
+          <button className="btn btn-icon" type="button" disabled={pageNumber >= (numPages || 1)} onClick={() => goToPage(pageNumber + 1)}>
+            <ChevronRight size={18} />
+          </button>
+        </div>
+
+        <div className="mobile-control-row">
+          <button className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`} type="button" onClick={() => setViewMode('page')} title="Page by page">
+            <Columns2 size={17} />
+          </button>
+          <button className={`btn btn-icon ${viewMode === 'scroll' ? 'is-active' : ''}`} type="button" onClick={() => setViewMode('scroll')} title="Scrollable PDF">
+            <ScrollText size={17} />
+          </button>
+          <button className="btn btn-icon" type="button" onClick={() => setScale((current) => Math.max(current - 0.15, 0.5))}>
+            <ZoomOut size={17} />
+          </button>
+          <button className="btn mobile-zoom-readout" type="button" onClick={() => setScale(1)}>
+            {Math.round(scale * 100)}%
+          </button>
+          <button className="btn btn-icon" type="button" onClick={() => setScale((current) => Math.min(current + 0.15, 2.5))}>
+            <ZoomIn size={17} />
+          </button>
+        </div>
       </div>
     </div>
   );

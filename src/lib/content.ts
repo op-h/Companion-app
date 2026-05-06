@@ -8,6 +8,7 @@ const IGNORED_FOLDERS = ['node_modules', '.git', '.next'];
 export interface Subject {
   name: string;
   pdfCount: number;
+  pdfs: string[];
 }
 
 export interface PDFFile {
@@ -26,11 +27,13 @@ export async function getSubjects(): Promise<Subject[]> {
         // Count PDFs inside
         const subjectPath = path.join(CONTENT_ROOT, entry.name);
         const files = await fs.promises.readdir(subjectPath);
-        const pdfCount = files.filter(f => f.toLowerCase().endsWith('.pdf')).length;
+        const pdfs = files.filter(f => f.toLowerCase().endsWith('.pdf'));
+        const pdfCount = pdfs.length;
 
         subjects.push({
           name: entry.name,
-          pdfCount
+          pdfCount,
+          pdfs
         });
       }
     }
@@ -47,7 +50,7 @@ export async function getSubjectPDFs(subjectName: string): Promise<string[]> {
   try {
     const files = await fs.promises.readdir(subjectPath);
     return files.filter(f => f.toLowerCase().endsWith('.pdf'));
-  } catch (error) {
+  } catch {
     // If folder doesn't exist or error
     return [];
   }

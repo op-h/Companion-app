@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 import { getPDFPath } from '@/lib/content';
 
 export async function GET(request: NextRequest) {
