@@ -12,41 +12,29 @@ const exams = [
   { subject: 'Web Design', date: '2026-05-24T09:00:00' },
 ];
 
+const ZERO_TIME_LEFT = { days: 0, hours: 0, minutes: 0, seconds: 0 };
+
 export default function ExamCountdown() {
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-  const [now, setNow] = useState(() => Date.now());
-  const [selectedExamName, setSelectedExamName] = useState<string | null>(() => {
-    const currentTime = Date.now();
-    return exams.find((exam) => new Date(exam.date).getTime() > currentTime)?.subject || exams[0].subject;
-  });
+  const [now, setNow] = useState<number | null>(null);
+  const [selectedExamName, setSelectedExamName] = useState(exams[0].subject);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
+    const timeout = window.setTimeout(() => setNow(Date.now()), 0);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(timer);
+    };
   }, []);
 
-  const selectedExam = exams.find((exam) => exam.subject === selectedExamName) || exams[0];
-
-  useEffect(() => {
-    const calculateTimeLeft = () => {
-      const difference = new Date(selectedExam.date).getTime() - Date.now();
-      if (difference <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        return;
-      }
-
-      setTimeLeft({
-        days: Math.floor(difference / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
-        minutes: Math.floor((difference / 1000 / 60) % 60),
-        seconds: Math.floor((difference / 1000) % 60),
-      });
-    };
-
-    calculateTimeLeft();
-    const timer = setInterval(calculateTimeLeft, 1000);
-    return () => clearInterval(timer);
-  }, [selectedExam]);
+  const nextExam = getNextExam(now);
+  const manuallySelectedExam = exams.find((exam) => exam.subject === selectedExamName);
+  const selectedExam =
+    now && manuallySelectedExam && new Date(manuallySelectedExam.date).getTime() < now
+      ? nextExam
+      : manuallySelectedExam || nextExam;
+  const timeLeft = now ? getTimeLeft(selectedExam.date, now) : ZERO_TIME_LEFT;
 
   return (
     <section className="panel">
@@ -76,8 +64,8 @@ export default function ExamCountdown() {
           <p className="label">Choose Exam</p>
           <div className="exam-list stack-gap-sm">
             {exams.map((exam) => {
-              const isSelected = selectedExamName === exam.subject;
-              const isPast = new Date(exam.date).getTime() < now;
+              const isSelected = selectedExam.subject === exam.subject;
+              const isPast = now ? new Date(exam.date).getTime() < now : false;
 
               return (
                 <button
@@ -97,6 +85,23 @@ export default function ExamCountdown() {
       </div>
     </section>
   );
+}
+
+function getNextExam(now: number | null) {
+  if (!now) return exams[0];
+  return exams.find((exam) => new Date(exam.date).getTime() > now) || exams[0];
+}
+
+function getTimeLeft(date: string, now: number) {
+  const difference = new Date(date).getTime() - now;
+  if (difference <= 0) return ZERO_TIME_LEFT;
+
+  return {
+    days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+    hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+    minutes: Math.floor((difference / 1000 / 60) % 60),
+    seconds: Math.floor((difference / 1000) % 60),
+  };
 }
 
 function CountdownCell({ label, value }: { label: string; value: number }) {

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, Folder, Play, Search } from 'lucide-react';
 import ExamCountdown from './ExamCountdown';
+import { useLocalStorageJson } from '@/lib/client-storage';
 
 interface Subject {
   name: string;
@@ -26,17 +27,12 @@ interface MaterialProgress {
 
 type ProgressMap = Record<string, Record<string, MaterialProgress>>;
 
+const EMPTY_PROGRESS_MAP: ProgressMap = {};
+
 export default function DashboardClient({ subjects }: { subjects: Subject[] }) {
   const [search, setSearch] = useState('');
-  const [lastRead] = useState<LastRead | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const saved = localStorage.getItem('last-read-pdf');
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [progressMap] = useState<ProgressMap>(() => {
-    if (typeof window === 'undefined') return {};
-    return JSON.parse(localStorage.getItem('study-progress') || '{}');
-  });
+  const lastRead = useLocalStorageJson<LastRead | null>('last-read-pdf', null);
+  const progressMap = useLocalStorageJson<ProgressMap>('study-progress', EMPTY_PROGRESS_MAP);
 
   const filteredSubjects = useMemo(
     () => subjects.filter((subject) => subject.name.toLowerCase().includes(search.toLowerCase())),

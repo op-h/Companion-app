@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, FileText, Search } from 'lucide-react';
+import { useLocalStorageJson } from '@/lib/client-storage';
 
 interface MaterialProgress {
   page: number;
@@ -12,6 +13,8 @@ interface MaterialProgress {
 
 type ProgressMap = Record<string, Record<string, MaterialProgress>>;
 
+const EMPTY_PROGRESS_MAP: ProgressMap = {};
+
 export default function SubjectMaterialsClient({
   subjectName,
   pdfs,
@@ -20,10 +23,7 @@ export default function SubjectMaterialsClient({
   pdfs: string[];
 }) {
   const [search, setSearch] = useState('');
-  const [progressMap] = useState<ProgressMap>(() => {
-    if (typeof window === 'undefined') return {};
-    return JSON.parse(localStorage.getItem('study-progress') || '{}');
-  });
+  const progressMap = useLocalStorageJson<ProgressMap>('study-progress', EMPTY_PROGRESS_MAP);
 
   const filteredPdfs = useMemo(
     () => pdfs.filter((pdf) => pdf.toLowerCase().includes(search.toLowerCase())),

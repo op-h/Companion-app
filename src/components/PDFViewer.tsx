@@ -16,6 +16,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import Link from 'next/link';
+import { readLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
 import 'react-pdf/dist/Page/TextLayer.css';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 
@@ -34,9 +35,8 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const pageNumberRef = useRef(1);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(() => {
-    if (typeof window === 'undefined') return 1;
-    const savedPage = localStorage.getItem(`progress-${pdfName}`);
-    return savedPage ? Number(savedPage) : 1;
+    const savedPage = readLocalStorageJson<number>(`progress-${pdfName}`, 1);
+    return Number.isFinite(savedPage) ? savedPage : 1;
   });
   const [scale, setScale] = useState(1);
   const [fitWidth, setFitWidth] = useState(760);
@@ -44,8 +44,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const [viewMode, setViewMode] = useState<'page' | 'scroll'>('page');
   const [scrollProgress, setScrollProgress] = useState(0);
   const [bookmarks, setBookmarks] = useState<number[]>(() => {
-    if (typeof window === 'undefined') return [];
-    return JSON.parse(localStorage.getItem(`bookmarks-${pdfName}`) || '[]');
+    return readLocalStorageJson<number[]>(`bookmarks-${pdfName}`, []);
   });
   const isBookmarked = bookmarks.includes(pageNumber);
   const progressWidth = viewMode === 'scroll' ? scrollProgress : (pageNumber / (numPages || 1)) * 100;
@@ -76,13 +75,16 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
 
   useEffect(() => {
     const savedAt = Date.now();
-    localStorage.setItem(`progress-${pdfName}`, pageNumber.toString());
-    localStorage.setItem(
+    writeLocalStorage(`progress-${pdfName}`, pageNumber.toString());
+    writeLocalStorage(
       'last-read-pdf',
       JSON.stringify({ subject: subjectName, name: pdfName, page: pageNumber, date: savedAt })
     );
 
-    const progressMap = JSON.parse(localStorage.getItem('study-progress') || '{}');
+    const progressMap = readLocalStorageJson<Record<string, Record<string, { page?: number; totalPages?: number; updatedAt?: number }>>>(
+      'study-progress',
+      {}
+    );
     const subjectProgress = progressMap[subjectName] || {};
     const previous = subjectProgress[pdfName] || {};
 
@@ -95,7 +97,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       },
     };
 
-    localStorage.setItem('study-progress', JSON.stringify(progressMap));
+    writeLocalStorage('study-progress', JSON.stringify(progressMap));
   }, [numPages, pageNumber, pdfName, subjectName]);
 
   useEffect(() => {
@@ -157,7 +159,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       ? bookmarks.filter((page: number) => page !== pageNumber)
       : [...bookmarks, pageNumber];
 
-    localStorage.setItem(`bookmarks-${pdfName}`, JSON.stringify(next));
+    writeLocalStorage(`bookmarks-${pdfName}`, JSON.stringify(next));
     setBookmarks(next);
   };
 

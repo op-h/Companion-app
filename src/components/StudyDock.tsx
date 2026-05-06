@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ListTodo, Minus, Pause, Play, Plus, RotateCcw, Timer, Trash2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
+import { useLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
 
 interface Todo {
   id: string;
@@ -12,35 +13,22 @@ interface Todo {
 
 const DEFAULT_TIMER_MINUTES = 25;
 const TIMER_PRESETS = [15, 25, 45, 60];
+const EMPTY_TODOS: Todo[] = [];
 
 export default function StudyDock() {
   const pathname = usePathname();
   const [isMinimized, setIsMinimized] = useState(true);
-  const [todos, setTodos] = useState<Todo[]>(() => {
-    if (typeof window === 'undefined') return [];
-    return JSON.parse(localStorage.getItem('study-dock-todos') || '[]');
-  });
+  const todos = useLocalStorageJson<Todo[]>('study-dock-todos', EMPTY_TODOS);
   const [todoText, setTodoText] = useState('');
-  const [timerMinutes, setTimerMinutes] = useState(() => {
-    if (typeof window === 'undefined') return DEFAULT_TIMER_MINUTES;
-    return Number(localStorage.getItem('study-dock-timer-minutes')) || DEFAULT_TIMER_MINUTES;
-  });
-  const [customMinutes, setCustomMinutes] = useState(() => timerMinutes.toString());
-  const [timeLeft, setTimeLeft] = useState(() => timerMinutes * 60);
+  const [timerMinutes, setTimerMinutes] = useState(DEFAULT_TIMER_MINUTES);
+  const [customMinutes, setCustomMinutes] = useState(DEFAULT_TIMER_MINUTES.toString());
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_TIMER_MINUTES * 60);
   const [isRunning, setIsRunning] = useState(false);
 
   const completedCount = useMemo(() => todos.filter((todo) => todo.done).length, [todos]);
   const activeCount = todos.length - completedCount;
   const timerProgress = Math.max(0, Math.min(100, (timeLeft / Math.max(timerMinutes * 60, 1)) * 100));
   const isReaderPage = pathname.split('/').filter(Boolean).length >= 2;
-
-  useEffect(() => {
-    localStorage.setItem('study-dock-todos', JSON.stringify(todos));
-  }, [todos]);
-
-  useEffect(() => {
-    localStorage.setItem('study-dock-timer-minutes', timerMinutes.toString());
-  }, [timerMinutes]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -60,8 +48,19 @@ export default function StudyDock() {
   const addTodo = () => {
     const text = todoText.trim();
     if (!text) return;
-    setTodos((current) => [{ id: Date.now().toString(), text, done: false }, ...current]);
+    writeLocalStorage('study-dock-todos', JSON.stringify([{ id: Date.now().toString(), text, done: false }, ...todos]));
     setTodoText('');
+  };
+
+  const toggleTodo = (id: string) => {
+    writeLocalStorage(
+      'study-dock-todos',
+      JSON.stringify(todos.map((todo) => (todo.id === id ? { ...todo, done: !todo.done } : todo)))
+    );
+  };
+
+  const deleteTodo = (id: string) => {
+    writeLocalStorage('study-dock-todos', JSON.stringify(todos.filter((todo) => todo.id !== id)));
   };
 
   const formatTime = (seconds: number) => {
@@ -208,7 +207,7 @@ export default function StudyDock() {
                 <button
                   className="todo-check"
                   type="button"
-                  onClick={() => setTodos((current) => current.map((item) => item.id === todo.id ? { ...item, done: !item.done } : item))}
+                  onClick={() => toggleTodo(todo.id)}
                   title="Toggle task"
                 >
                   {todo.done && <Check size={13} />}
@@ -217,7 +216,7 @@ export default function StudyDock() {
                 <button
                   className="todo-delete"
                   type="button"
-                  onClick={() => setTodos((current) => current.filter((item) => item.id !== todo.id))}
+                  onClick={() => deleteTodo(todo.id)}
                   title="Delete task"
                 >
                   <Trash2 size={13} />
