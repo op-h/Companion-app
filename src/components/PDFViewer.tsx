@@ -17,10 +17,13 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { readLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
-import 'react-pdf/dist/Page/TextLayer.css';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
+
+const SCROLL_RENDER_RADIUS = 2;
 
 interface PDFViewerProps {
   url: string;
@@ -43,11 +46,34 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const [zenMode, setZenMode] = useState(false);
   const [viewMode, setViewMode] = useState<'page' | 'scroll'>('page');
   const [scrollProgress, setScrollProgress] = useState(0);
+  const [renderedScrollPages, setRenderedScrollPages] = useState<Set<number>>(() => new Set([1]));
   const [bookmarks, setBookmarks] = useState<number[]>(() => {
     return readLocalStorageJson<number[]>(`bookmarks-${pdfName}`, []);
   });
   const isBookmarked = bookmarks.includes(pageNumber);
   const progressWidth = viewMode === 'scroll' ? scrollProgress : (pageNumber / (numPages || 1)) * 100;
+  const pageWidth = fitWidth * scale;
+  const estimatedPageHeight = Math.max(360, Math.round(pageWidth * 1.32));
+  const cappedDevicePixelRatio =
+    typeof window === 'undefined' ? 1 : Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+
+  const renderScrollWindow = useCallback((centerPage: number) => {
+    if (!numPages) return;
+
+    setRenderedScrollPages((current) => {
+      const next = new Set(current);
+
+      for (
+        let page = Math.max(1, centerPage - SCROLL_RENDER_RADIUS);
+        page <= Math.min(numPages, centerPage + SCROLL_RENDER_RADIUS);
+        page += 1
+      ) {
+        next.add(page);
+      }
+
+      return next.size === current.size ? current : next;
+    });
+  }, [numPages]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
@@ -154,6 +180,31 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     });
   }, [handleScroll, numPages, viewMode]);
 
+  useEffect(() => {
+    if (viewMode !== 'scroll' || !numPages || !scrollRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const page = Number((entry.target as HTMLElement).dataset.page);
+          if (Number.isFinite(page)) renderScrollWindow(page);
+        });
+      },
+      {
+        root: scrollRef.current,
+        rootMargin: '900px 0px',
+      }
+    );
+
+    for (let page = 1; page <= numPages; page += 1) {
+      const element = pageRefs.current[page];
+      if (element) observer.observe(element);
+    }
+
+    return () => observer.disconnect();
+  }, [numPages, renderScrollWindow, viewMode]);
+
   const toggleBookmark = () => {
     const next = isBookmarked
       ? bookmarks.filter((page: number) => page !== pageNumber)
@@ -166,11 +217,24 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const goToPage = (targetPage: number) => {
     const nextPage = Math.min(Math.max(targetPage, 1), numPages || 1);
     setPageNumber(nextPage);
+    renderScrollWindow(nextPage);
 
     if (viewMode === 'scroll') {
       pageRefs.current[nextPage]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  const renderPdfPage = (targetPage: number) => (
+    <Page
+      pageNumber={targetPage}
+      width={pageWidth}
+      devicePixelRatio={cappedDevicePixelRatio}
+      renderTextLayer={false}
+      renderAnnotationLayer={false}
+      className="pdf-page"
+      loading={<div className="pdf-page pdf-page-loading" style={{ width: pageWidth, height: estimatedPageHeight }}>Loading page {targetPage}...</div>}
+    />
+  );
 
   return (
     <div className={`pdf-frame ${zenMode ? 'is-zen' : ''}`}>
@@ -216,7 +280,10 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button
             className={`btn ${viewMode === 'scroll' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => setViewMode('scroll')}
+            onClick={() => {
+              renderScrollWindow(pageNumber);
+              setViewMode('scroll');
+            }}
             title="Scrollable PDF"
           >
             <ScrollText size={16} />
@@ -251,37 +318,41 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       >
         <Document
           file={url}
-          onLoadSuccess={({ numPages: totalPages }) => setNumPages(totalPages)}
+          onLoadSuccess={({ numPages: totalPages }) => {
+            setNumPages(totalPages);
+            setPageNumber((current) => Math.min(Math.max(current, 1), totalPages));
+            setRenderedScrollPages(getPageWindow(pageNumberRef.current, totalPages));
+          }}
           loading={<div className="loading-state"><Loader2 size={16} className="spin" /> Loading PDF...</div>}
           error={<div className="error-state">Failed to load PDF. Check the file path.</div>}
         >
           {viewMode === 'page' ? (
-            <Page
-              pageNumber={pageNumber}
-              width={fitWidth * scale}
-              renderTextLayer={true}
-              renderAnnotationLayer={true}
-              className="pdf-page"
-            />
+            renderPdfPage(pageNumber)
           ) : (
             <div className="pdf-page-stack">
-              {Array.from({ length: numPages || 0 }, (_, index) => (
-                <div
-                  className="pdf-page-anchor"
-                  key={index + 1}
-                  ref={(element) => {
-                    pageRefs.current[index + 1] = element;
-                  }}
-                >
-                  <Page
-                    pageNumber={index + 1}
-                    width={fitWidth * scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="pdf-page"
-                  />
-                </div>
-              ))}
+              {Array.from({ length: numPages || 0 }, (_, index) => {
+                const targetPage = index + 1;
+                const shouldRenderPage = renderedScrollPages.has(targetPage);
+
+                return (
+                  <div
+                    className="pdf-page-anchor"
+                    data-page={targetPage}
+                    key={targetPage}
+                    ref={(element) => {
+                      pageRefs.current[targetPage] = element;
+                    }}
+                  >
+                    {shouldRenderPage ? (
+                      renderPdfPage(targetPage)
+                    ) : (
+                      <div className="pdf-page pdf-page-placeholder" style={{ width: pageWidth, height: estimatedPageHeight }}>
+                        <span>Page {targetPage}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </Document>
@@ -302,7 +373,15 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`} type="button" onClick={() => setViewMode('page')} title="Page by page">
             <Columns2 size={17} />
           </button>
-          <button className={`btn btn-icon ${viewMode === 'scroll' ? 'is-active' : ''}`} type="button" onClick={() => setViewMode('scroll')} title="Scrollable PDF">
+          <button
+            className={`btn btn-icon ${viewMode === 'scroll' ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => {
+              renderScrollWindow(pageNumber);
+              setViewMode('scroll');
+            }}
+            title="Scrollable PDF"
+          >
             <ScrollText size={17} />
           </button>
           <button className="btn btn-icon" type="button" onClick={() => setScale((current) => Math.max(current - 0.15, 0.5))}>
@@ -318,4 +397,18 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       </div>
     </div>
   );
+}
+
+function getPageWindow(centerPage: number, totalPages: number) {
+  const pages = new Set<number>();
+
+  for (
+    let page = Math.max(1, centerPage - SCROLL_RENDER_RADIUS);
+    page <= Math.min(totalPages, centerPage + SCROLL_RENDER_RADIUS);
+    page += 1
+  ) {
+    pages.add(page);
+  }
+
+  return pages;
 }

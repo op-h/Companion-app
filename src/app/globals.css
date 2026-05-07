@@ -651,6 +651,25 @@ button:disabled {
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.24);
 }
 
+.pdf-page-placeholder,
+.pdf-page-loading {
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(48, 54, 61, 0.65);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    #ffffff;
+  color: #5f6773;
+  font-family: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Courier New", monospace;
+  font-size: 0.78rem;
+}
+
+.pdf-page-placeholder span {
+  padding: 8px 12px;
+  border-radius: 50px;
+  background: rgba(13, 17, 23, 0.08);
+}
+
 .react-pdf__Page__canvas,
 .react-pdf__Page__textContent,
 .react-pdf__Page__annotations {
