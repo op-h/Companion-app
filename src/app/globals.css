@@ -676,6 +676,21 @@ button:disabled {
   max-width: none !important;
 }
 
+.pdf-page .react-pdf__Page__textContent {
+  user-select: text;
+}
+
+.pdf-page .react-pdf__Page__textContent :is(span, br) {
+  color: transparent !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+
+.pdf-page .react-pdf__Page__textContent ::selection {
+  background: rgba(159, 239, 0, 0.24);
+  color: transparent;
+}
+
 .loading-state,
 .error-state {
   display: inline-flex;

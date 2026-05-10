@@ -17,11 +17,19 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { readLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
+import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url
 ).toString();
+
+const pdfjsWithVerbosity = pdfjs as typeof pdfjs & {
+  setVerbosityLevel?: (level: number) => void;
+  VerbosityLevel?: { ERRORS: number };
+};
+
+pdfjsWithVerbosity.setVerbosityLevel?.(pdfjsWithVerbosity.VerbosityLevel?.ERRORS ?? 0);
 
 const SCROLL_RENDER_RADIUS = 2;
 
@@ -229,8 +237,9 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       pageNumber={targetPage}
       width={pageWidth}
       devicePixelRatio={cappedDevicePixelRatio}
-      renderTextLayer={false}
+      renderTextLayer={true}
       renderAnnotationLayer={false}
+      onRenderTextLayerError={() => undefined}
       className="pdf-page"
       loading={<div className="pdf-page pdf-page-loading" style={{ width: pageWidth, height: estimatedPageHeight }}>Loading page {targetPage}...</div>}
     />
