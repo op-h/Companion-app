@@ -23,7 +23,7 @@ export default function PDFPageClient({ subjectName, pdfName, pdfUrl }: PDFPageC
     <div className="reader-shell">
       <header className={`reader-topbar ${zenMode ? 'is-hidden' : ''}`}>
         <div className="crumbs">
-          <Link className="btn btn-icon" href={`/${encodeURIComponent(subjectName)}`} title="Back to materials">
+          <Link className="btn btn-icon" href={`/${encodeURIComponent(subjectName)}`} prefetch={false} title="Back to materials">
             <ArrowLeft size={18} />
           </Link>
           <div className="card-copy">
@@ -32,7 +32,7 @@ export default function PDFPageClient({ subjectName, pdfName, pdfUrl }: PDFPageC
           </div>
         </div>
 
-        <Link className="btn btn-icon" href="/" title="Dashboard">
+        <Link className="btn btn-icon" href="/" prefetch={false} title="Dashboard">
           <Home size={18} />
         </Link>
       </header>

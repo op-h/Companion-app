@@ -44,6 +44,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const pageNumberRef = useRef(1);
+  const scrollFrameRef = useRef<number | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(() => {
     const savedPage = readLocalStorageJson<number>(`progress-${pdfName}`, 1);
@@ -55,6 +56,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const [viewMode, setViewMode] = useState<'page' | 'scroll'>('page');
   const [scrollProgress, setScrollProgress] = useState(0);
   const [renderedScrollPages, setRenderedScrollPages] = useState<Set<number>>(() => new Set([1]));
+  const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
   const [bookmarks, setBookmarks] = useState<number[]>(() => {
     return readLocalStorageJson<number[]>(`bookmarks-${pdfName}`, []);
   });
@@ -69,23 +71,22 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     if (!numPages) return;
 
     setRenderedScrollPages((current) => {
-      const next = new Set(current);
-
-      for (
-        let page = Math.max(1, centerPage - SCROLL_RENDER_RADIUS);
-        page <= Math.min(numPages, centerPage + SCROLL_RENDER_RADIUS);
-        page += 1
-      ) {
-        next.add(page);
-      }
-
-      return next.size === current.size ? current : next;
+      const next = getPageWindow(centerPage, numPages);
+      return arePageSetsEqual(current, next) ? current : next;
     });
   }, [numPages]);
 
   useEffect(() => {
     pageNumberRef.current = pageNumber;
   }, [pageNumber]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -150,7 +151,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [numPages, toggleZen, viewMode, zenMode]);
 
-  const handleScroll = useCallback(() => {
+  const measureScrollPosition = useCallback(() => {
     if (viewMode !== 'scroll' || !scrollRef.current || !numPages) return;
 
     const container = scrollRef.current;
@@ -175,7 +176,17 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     }
 
     setPageNumber((current) => (current === visiblePage ? current : visiblePage));
-  }, [numPages, viewMode]);
+    renderScrollWindow(visiblePage);
+  }, [numPages, renderScrollWindow, viewMode]);
+
+  const handleScroll = useCallback(() => {
+    if (scrollFrameRef.current !== null) return;
+
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      measureScrollPosition();
+    });
+  }, [measureScrollPosition]);
 
   useEffect(() => {
     if (viewMode !== 'scroll') return;
@@ -183,10 +194,10 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         pageRefs.current[pageNumberRef.current]?.scrollIntoView({ block: 'start' });
-        handleScroll();
+        measureScrollPosition();
       });
     });
-  }, [handleScroll, numPages, viewMode]);
+  }, [measureScrollPosition, numPages, viewMode]);
 
   useEffect(() => {
     if (viewMode !== 'scroll' || !numPages || !scrollRef.current) return;
@@ -232,6 +243,13 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     }
   };
 
+  const recordPageHeight = (targetPage: number, page: { height: number }) => {
+    setPageHeights((current) => {
+      const nextHeight = Math.round(page.height);
+      return current[targetPage] === nextHeight ? current : { ...current, [targetPage]: nextHeight };
+    });
+  };
+
   const renderPdfPage = (targetPage: number) => (
     <Page
       pageNumber={targetPage}
@@ -239,6 +257,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       devicePixelRatio={cappedDevicePixelRatio}
       renderTextLayer={true}
       renderAnnotationLayer={false}
+      onRenderSuccess={(page) => recordPageHeight(targetPage, page)}
       onRenderTextLayerError={() => undefined}
       className="pdf-page"
       loading={<div className="pdf-page pdf-page-loading" style={{ width: pageWidth, height: estimatedPageHeight }}>Loading page {targetPage}...</div>}
@@ -255,11 +274,11 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
 
       <div className={`pdf-toolbar ${zenMode ? 'is-hidden' : ''}`}>
         <div className="crumbs">
-          <Link href="/" title="Dashboard">
+          <Link href="/" prefetch={false} title="Dashboard">
             <HomeIcon size={15} />
           </Link>
           <span>/</span>
-          <Link className="truncate desktop-only" href={`/${encodeURIComponent(subjectName)}`}>
+          <Link className="truncate desktop-only" href={`/${encodeURIComponent(subjectName)}`} prefetch={false}>
             {subjectName}
           </Link>
           <span className="desktop-only">/</span>
@@ -280,7 +299,10 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button
             className={`btn ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => setViewMode('page')}
+            onClick={() => {
+              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber));
+              setViewMode('page');
+            }}
             title="Page by page"
           >
             <Columns2 size={16} />
@@ -355,7 +377,10 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
                     {shouldRenderPage ? (
                       renderPdfPage(targetPage)
                     ) : (
-                      <div className="pdf-page pdf-page-placeholder" style={{ width: pageWidth, height: estimatedPageHeight }}>
+                      <div
+                        className="pdf-page pdf-page-placeholder"
+                        style={{ width: pageWidth, height: pageHeights[targetPage] || estimatedPageHeight }}
+                      >
                         <span>Page {targetPage}</span>
                       </div>
                     )}
@@ -379,7 +404,15 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
         </div>
 
         <div className="mobile-control-row">
-          <button className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`} type="button" onClick={() => setViewMode('page')} title="Page by page">
+          <button
+            className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => {
+              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber));
+              setViewMode('page');
+            }}
+            title="Page by page"
+          >
             <Columns2 size={17} />
           </button>
           <button
@@ -420,4 +453,14 @@ function getPageWindow(centerPage: number, totalPages: number) {
   }
 
   return pages;
+}
+
+function arePageSetsEqual(first: Set<number>, second: Set<number>) {
+  if (first.size !== second.size) return false;
+
+  for (const page of first) {
+    if (!second.has(page)) return false;
+  }
+
+  return true;
 }
