@@ -33,11 +33,22 @@ pdfjsWithVerbosity.setVerbosityLevel?.(pdfjsWithVerbosity.VerbosityLevel?.ERRORS
 
 const PAGE_PRELOAD_RADIUS = 1;
 const SCROLL_RENDER_RADIUS = 4;
+const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const REFRESH_NOTICE_MS = 1200;
 const PDF_LOAD_OPTIONS = {
   disableAutoFetch: false,
   disableStream: false,
   rangeChunkSize: 1024 * 1024,
 };
+
+interface ReaderViewState {
+  pageNumber: number;
+  scale: number;
+  scrollProgress: number;
+  scrollTop: number;
+  updatedAt: number;
+  viewMode: 'page' | 'scroll';
+}
 
 interface PDFViewerProps {
   url: string;
@@ -47,22 +58,37 @@ interface PDFViewerProps {
 }
 
 export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PDFViewerProps) {
+  const readerStateKey = `reader-view-state:${subjectName}:${pdfName}`;
+  const [initialReaderState] = useState(() => readLocalStorageJson<ReaderViewState | null>(readerStateKey, null));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const pageNumberRef = useRef(1);
+  const pendingScrollTopRef = useRef(
+    initialReaderState?.viewMode === 'scroll' && Number.isFinite(initialReaderState.scrollTop)
+      ? initialReaderState.scrollTop
+      : null
+  );
+  const refreshTimeoutRef = useRef<number | null>(null);
+  const isRefreshingRef = useRef(false);
+  const nextRefreshAtRef = useRef<number | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(() => {
+    if (initialReaderState?.pageNumber) return Math.max(1, Math.round(initialReaderState.pageNumber));
     const savedPage = readLocalStorageJson<number>(`progress-${pdfName}`, 1);
     return Number.isFinite(savedPage) ? savedPage : 1;
   });
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(() => clampNumber(initialReaderState?.scale, 0.5, 2.5, 1));
   const [fitWidth, setFitWidth] = useState(760);
   const [zenMode, setZenMode] = useState(false);
-  const [viewMode, setViewMode] = useState<'page' | 'scroll'>('page');
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const [viewMode, setViewMode] = useState<'page' | 'scroll'>(() =>
+    initialReaderState?.viewMode === 'scroll' ? 'scroll' : 'page'
+  );
+  const [scrollProgress, setScrollProgress] = useState(() => clampNumber(initialReaderState?.scrollProgress, 0, 100, 0));
   const [renderedScrollPages, setRenderedScrollPages] = useState<Set<number>>(() => new Set([1]));
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
+  const [refreshSeconds, setRefreshSeconds] = useState(Math.round(AUTO_REFRESH_INTERVAL_MS / 1000));
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [bookmarks, setBookmarks] = useState<number[]>(() => {
     return readLocalStorageJson<number[]>(`bookmarks-${pdfName}`, []);
   });
@@ -90,6 +116,10 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     return () => {
       if (scrollFrameRef.current !== null) {
         cancelAnimationFrame(scrollFrameRef.current);
+      }
+
+      if (refreshTimeoutRef.current !== null) {
+        clearTimeout(refreshTimeoutRef.current);
       }
     };
   }, []);
@@ -140,6 +170,62 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
 
     writeLocalStorage('study-progress', JSON.stringify(progressMap));
   }, [numPages, pageNumber, pdfName, subjectName]);
+
+  const saveReaderViewState = useCallback(() => {
+    const container = scrollRef.current;
+
+    writeLocalStorage(
+      readerStateKey,
+      JSON.stringify({
+        pageNumber: pageNumberRef.current,
+        scale,
+        scrollProgress,
+        scrollTop: container?.scrollTop || 0,
+        updatedAt: Date.now(),
+        viewMode,
+      } satisfies ReaderViewState)
+    );
+  }, [readerStateKey, scale, scrollProgress, viewMode]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(saveReaderViewState, 180);
+    return () => window.clearTimeout(timeout);
+  }, [pageNumber, saveReaderViewState, scale, scrollProgress, viewMode]);
+
+  useEffect(() => {
+    window.addEventListener('beforeunload', saveReaderViewState);
+    return () => {
+      saveReaderViewState();
+      window.removeEventListener('beforeunload', saveReaderViewState);
+    };
+  }, [saveReaderViewState]);
+
+  useEffect(() => {
+    nextRefreshAtRef.current = Date.now() + AUTO_REFRESH_INTERVAL_MS;
+
+    const timer = window.setInterval(() => {
+      const nextRefreshAt = nextRefreshAtRef.current || Date.now() + AUTO_REFRESH_INTERVAL_MS;
+      const remainingMs = nextRefreshAt - Date.now();
+      setRefreshSeconds(Math.max(0, Math.ceil(remainingMs / 1000)));
+
+      if (remainingMs > 0 || isRefreshingRef.current) return;
+
+      if (shouldDelayMemoryRefresh()) {
+        nextRefreshAtRef.current = Date.now() + 30 * 1000;
+        return;
+      }
+
+      isRefreshingRef.current = true;
+      saveReaderViewState();
+      setIsRefreshing(true);
+
+      refreshTimeoutRef.current = window.setTimeout(() => {
+        window.location.reload();
+      }, REFRESH_NOTICE_MS);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [saveReaderViewState]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -199,7 +285,15 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        pageRefs.current[pageNumberRef.current]?.scrollIntoView({ block: 'start' });
+        const pendingScrollTop = pendingScrollTopRef.current;
+
+        if (pendingScrollTop !== null && scrollRef.current) {
+          scrollRef.current.scrollTop = pendingScrollTop;
+          pendingScrollTopRef.current = null;
+        } else {
+          pageRefs.current[pageNumberRef.current]?.scrollIntoView({ block: 'start' });
+        }
+
         measureScrollPosition();
       });
     });
@@ -247,6 +341,17 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     if (viewMode === 'scroll') {
       pageRefs.current[nextPage]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+  };
+
+  const updateViewMode = (nextViewMode: 'page' | 'scroll') => {
+    if (nextViewMode === 'page') {
+      setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber, SCROLL_RENDER_RADIUS));
+    } else {
+      pendingScrollTopRef.current = null;
+      renderScrollWindow(pageNumber);
+    }
+
+    setViewMode(nextViewMode);
   };
 
   const recordPageHeight = (targetPage: number, page: { height: number }) => {
@@ -302,13 +407,13 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
         </div>
 
         <div className="toolbar-group desktop-reader-controls">
+          <span className={`auto-refresh-chip ${isRefreshing ? 'is-refreshing' : ''}`}>
+            {isRefreshing ? 'Refreshing' : `MEM ${formatRefreshTime(refreshSeconds)}`}
+          </span>
           <button
             className={`btn ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => {
-              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber, SCROLL_RENDER_RADIUS));
-              setViewMode('page');
-            }}
+            onClick={() => updateViewMode('page')}
             title="Page by page"
           >
             <Columns2 size={16} />
@@ -317,10 +422,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button
             className={`btn ${viewMode === 'scroll' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => {
-              renderScrollWindow(pageNumber);
-              setViewMode('scroll');
-            }}
+            onClick={() => updateViewMode('scroll')}
             title="Scrollable PDF"
           >
             <ScrollText size={16} />
@@ -428,10 +530,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button
             className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => {
-              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber, SCROLL_RENDER_RADIUS));
-              setViewMode('page');
-            }}
+            onClick={() => updateViewMode('page')}
             title="Page by page"
           >
             <Columns2 size={17} />
@@ -439,10 +538,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           <button
             className={`btn btn-icon ${viewMode === 'scroll' ? 'is-active' : ''}`}
             type="button"
-            onClick={() => {
-              renderScrollWindow(pageNumber);
-              setViewMode('scroll');
-            }}
+            onClick={() => updateViewMode('scroll')}
             title="Scrollable PDF"
           >
             <ScrollText size={17} />
@@ -458,6 +554,13 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           </button>
         </div>
       </div>
+
+      {isRefreshing && (
+        <div className="memory-refresh-overlay" role="status" aria-live="polite">
+          <Loader2 size={16} className="spin" />
+          Refreshing reader memory...
+        </div>
+      )}
     </div>
   );
 }
@@ -484,4 +587,26 @@ function arePageSetsEqual(first: Set<number>, second: Set<number>) {
   }
 
   return true;
+}
+
+function clampNumber(value: number | undefined, min: number, max: number, fallback: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function formatRefreshTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function shouldDelayMemoryRefresh() {
+  const activeElement = document.activeElement;
+  const activeTag = activeElement?.tagName;
+
+  if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeElement?.getAttribute('contenteditable') === 'true') {
+    return true;
+  }
+
+  return Boolean(window.getSelection()?.toString());
 }

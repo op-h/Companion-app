@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ListTodo, Minus, Pause, Play, Plus, RotateCcw, Timer, Trash2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { useLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
+import { readLocalStorageJson, useLocalStorageJson, writeLocalStorage } from '@/lib/client-storage';
 
 interface Todo {
   id: string;
@@ -11,12 +11,23 @@ interface Todo {
   done: boolean;
 }
 
+interface StudyDockState {
+  customMinutes: string;
+  isMinimized: boolean;
+  isRunning: boolean;
+  savedAt: number;
+  timeLeft: number;
+  timerMinutes: number;
+}
+
 const DEFAULT_TIMER_MINUTES = 25;
 const TIMER_PRESETS = [15, 25, 45, 60];
 const EMPTY_TODOS: Todo[] = [];
+const STUDY_DOCK_STATE_KEY = 'study-dock-state';
 
 export default function StudyDock() {
   const pathname = usePathname();
+  const canPersistDockStateRef = useRef(false);
   const [isMinimized, setIsMinimized] = useState(true);
   const todos = useLocalStorageJson<Todo[]>('study-dock-todos', EMPTY_TODOS);
   const [todoText, setTodoText] = useState('');
@@ -29,6 +40,42 @@ export default function StudyDock() {
   const activeCount = todos.length - completedCount;
   const timerProgress = Math.max(0, Math.min(100, (timeLeft / Math.max(timerMinutes * 60, 1)) * 100));
   const isReaderPage = pathname.split('/').filter(Boolean).length >= 2;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const savedState = readLocalStorageJson<StudyDockState | null>(STUDY_DOCK_STATE_KEY, null);
+
+      if (savedState) {
+        const restored = restoreStudyDockState(savedState);
+
+        setIsMinimized(restored.isMinimized);
+        setTimerMinutes(restored.timerMinutes);
+        setCustomMinutes(restored.customMinutes);
+        setTimeLeft(restored.timeLeft);
+        setIsRunning(restored.isRunning);
+      }
+
+      canPersistDockStateRef.current = true;
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
+  useEffect(() => {
+    if (!canPersistDockStateRef.current) return;
+
+    writeLocalStorage(
+      STUDY_DOCK_STATE_KEY,
+      JSON.stringify({
+        customMinutes,
+        isMinimized,
+        isRunning,
+        savedAt: Date.now(),
+        timeLeft,
+        timerMinutes,
+      } satisfies StudyDockState)
+    );
+  }, [customMinutes, isMinimized, isRunning, timeLeft, timerMinutes]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -234,4 +281,26 @@ export default function StudyDock() {
       </section>
     </section>
   );
+}
+
+function restoreStudyDockState(savedState: StudyDockState) {
+  const timerMinutes = clampInteger(savedState.timerMinutes, 1, 240, DEFAULT_TIMER_MINUTES);
+  const maxTimeLeft = timerMinutes * 60;
+  const elapsedSeconds = savedState.isRunning
+    ? Math.max(0, Math.floor((Date.now() - savedState.savedAt) / 1000))
+    : 0;
+  const timeLeft = clampInteger(savedState.timeLeft - elapsedSeconds, 0, maxTimeLeft, maxTimeLeft);
+
+  return {
+    customMinutes: savedState.customMinutes || timerMinutes.toString(),
+    isMinimized: Boolean(savedState.isMinimized),
+    isRunning: Boolean(savedState.isRunning && timeLeft > 0),
+    timeLeft,
+    timerMinutes,
+  };
+}
+
+function clampInteger(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
