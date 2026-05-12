@@ -595,28 +595,6 @@ button:disabled {
   font-size: 0.76rem;
 }
 
-.auto-refresh-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 50px;
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  font-family: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Courier New", monospace;
-  font-size: 0.68rem;
-  font-weight: 800;
-  white-space: nowrap;
-  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
-}
-
-.auto-refresh-chip.is-refreshing {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
 .progress-line {
   height: 2px;
   background: var(--bg-input);
@@ -675,25 +653,6 @@ button:disabled {
 
 .mobile-pdf-controls {
   display: none;
-}
-
-.memory-refresh-overlay {
-  position: absolute;
-  z-index: 20;
-  right: 14px;
-  bottom: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--accent);
-  border-radius: 50px;
-  background: rgba(22, 27, 34, 0.95);
-  color: var(--accent);
-  font-family: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Courier New", monospace;
-  font-size: 0.72rem;
-  font-weight: 800;
-  backdrop-filter: blur(20px);
 }
 
 .react-pdf__Document {

@@ -34,7 +34,6 @@ pdfjsWithVerbosity.setVerbosityLevel?.(pdfjsWithVerbosity.VerbosityLevel?.ERRORS
 const PAGE_PRELOAD_RADIUS = 1;
 const SCROLL_RENDER_RADIUS = 4;
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
-const REFRESH_NOTICE_MS = 1200;
 const PDF_LOAD_OPTIONS = {
   disableAutoFetch: false,
   disableStream: false,
@@ -68,7 +67,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       ? initialReaderState.scrollTop
       : null
   );
-  const refreshTimeoutRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const nextRefreshAtRef = useRef<number | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
@@ -87,8 +85,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   const [scrollProgress, setScrollProgress] = useState(() => clampNumber(initialReaderState?.scrollProgress, 0, 100, 0));
   const [renderedScrollPages, setRenderedScrollPages] = useState<Set<number>>(() => new Set([1]));
   const [pageHeights, setPageHeights] = useState<Record<number, number>>({});
-  const [refreshSeconds, setRefreshSeconds] = useState(Math.round(AUTO_REFRESH_INTERVAL_MS / 1000));
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [bookmarks, setBookmarks] = useState<number[]>(() => {
     return readLocalStorageJson<number[]>(`bookmarks-${pdfName}`, []);
   });
@@ -116,10 +112,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     return () => {
       if (scrollFrameRef.current !== null) {
         cancelAnimationFrame(scrollFrameRef.current);
-      }
-
-      if (refreshTimeoutRef.current !== null) {
-        clearTimeout(refreshTimeoutRef.current);
       }
     };
   }, []);
@@ -206,7 +198,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     const timer = window.setInterval(() => {
       const nextRefreshAt = nextRefreshAtRef.current || Date.now() + AUTO_REFRESH_INTERVAL_MS;
       const remainingMs = nextRefreshAt - Date.now();
-      setRefreshSeconds(Math.max(0, Math.ceil(remainingMs / 1000)));
 
       if (remainingMs > 0 || isRefreshingRef.current) return;
 
@@ -217,11 +208,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
 
       isRefreshingRef.current = true;
       saveReaderViewState();
-      setIsRefreshing(true);
-
-      refreshTimeoutRef.current = window.setTimeout(() => {
-        window.location.reload();
-      }, REFRESH_NOTICE_MS);
+      window.location.reload();
     }, 1000);
 
     return () => window.clearInterval(timer);
@@ -407,9 +394,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
         </div>
 
         <div className="toolbar-group desktop-reader-controls">
-          <span className={`auto-refresh-chip ${isRefreshing ? 'is-refreshing' : ''}`}>
-            {isRefreshing ? 'Refreshing' : `MEM ${formatRefreshTime(refreshSeconds)}`}
-          </span>
           <button
             className={`btn ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
@@ -554,13 +538,6 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
           </button>
         </div>
       </div>
-
-      {isRefreshing && (
-        <div className="memory-refresh-overlay" role="status" aria-live="polite">
-          <Loader2 size={16} className="spin" />
-          Refreshing reader memory...
-        </div>
-      )}
     </div>
   );
 }
@@ -592,12 +569,6 @@ function arePageSetsEqual(first: Set<number>, second: Set<number>) {
 function clampNumber(value: number | undefined, min: number, max: number, fallback: number) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
-}
-
-function formatRefreshTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 function shouldDelayMemoryRefresh() {
