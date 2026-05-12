@@ -31,7 +31,13 @@ const pdfjsWithVerbosity = pdfjs as typeof pdfjs & {
 
 pdfjsWithVerbosity.setVerbosityLevel?.(pdfjsWithVerbosity.VerbosityLevel?.ERRORS ?? 0);
 
-const SCROLL_RENDER_RADIUS = 2;
+const PAGE_PRELOAD_RADIUS = 1;
+const SCROLL_RENDER_RADIUS = 4;
+const PDF_LOAD_OPTIONS = {
+  disableAutoFetch: false,
+  disableStream: false,
+  rangeChunkSize: 1024 * 1024,
+};
 
 interface PDFViewerProps {
   url: string;
@@ -71,7 +77,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
     if (!numPages) return;
 
     setRenderedScrollPages((current) => {
-      const next = getPageWindow(centerPage, numPages);
+      const next = getPageWindow(centerPage, numPages, SCROLL_RENDER_RADIUS);
       return arePageSetsEqual(current, next) ? current : next;
     });
   }, [numPages]);
@@ -300,7 +306,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
             className={`btn ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
             onClick={() => {
-              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber));
+              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber, SCROLL_RENDER_RADIUS));
               setViewMode('page');
             }}
             title="Page by page"
@@ -349,16 +355,31 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
       >
         <Document
           file={url}
+          options={PDF_LOAD_OPTIONS}
           onLoadSuccess={({ numPages: totalPages }) => {
             setNumPages(totalPages);
             setPageNumber((current) => Math.min(Math.max(current, 1), totalPages));
-            setRenderedScrollPages(getPageWindow(pageNumberRef.current, totalPages));
+            setRenderedScrollPages(getPageWindow(pageNumberRef.current, totalPages, SCROLL_RENDER_RADIUS));
           }}
           loading={<div className="loading-state"><Loader2 size={16} className="spin" /> Loading PDF...</div>}
           error={<div className="error-state">Failed to load PDF. Check the file path.</div>}
         >
           {viewMode === 'page' ? (
-            renderPdfPage(pageNumber)
+            <div className="pdf-single-page-stack">
+              {Array.from(getPageWindow(pageNumber, numPages || pageNumber, PAGE_PRELOAD_RADIUS)).map((targetPage) => {
+                const isActivePage = targetPage === pageNumber;
+
+                return (
+                  <div
+                    aria-hidden={!isActivePage}
+                    className={isActivePage ? 'pdf-single-page-active' : 'pdf-single-page-preload'}
+                    key={targetPage}
+                  >
+                    {renderPdfPage(targetPage)}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="pdf-page-stack">
               {Array.from({ length: numPages || 0 }, (_, index) => {
@@ -408,7 +429,7 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
             className={`btn btn-icon ${viewMode === 'page' ? 'is-active' : ''}`}
             type="button"
             onClick={() => {
-              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber));
+              setRenderedScrollPages(getPageWindow(pageNumber, numPages || pageNumber, SCROLL_RENDER_RADIUS));
               setViewMode('page');
             }}
             title="Page by page"
@@ -441,12 +462,12 @@ export default function PDFViewer({ url, subjectName, pdfName, onToggleZen }: PD
   );
 }
 
-function getPageWindow(centerPage: number, totalPages: number) {
+function getPageWindow(centerPage: number, totalPages: number, radius: number) {
   const pages = new Set<number>();
 
   for (
-    let page = Math.max(1, centerPage - SCROLL_RENDER_RADIUS);
-    page <= Math.min(totalPages, centerPage + SCROLL_RENDER_RADIUS);
+    let page = Math.max(1, centerPage - radius);
+    page <= Math.min(totalPages, centerPage + radius);
     page += 1
   ) {
     pages.add(page);

@@ -628,6 +628,29 @@ button:disabled {
   justify-items: center;
 }
 
+.pdf-single-page-stack {
+  position: relative;
+  display: grid;
+  justify-items: center;
+}
+
+.pdf-single-page-active {
+  position: relative;
+  z-index: 1;
+}
+
+.pdf-single-page-preload {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 0;
+  width: max-content;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+  visibility: hidden;
+}
+
 .mobile-pdf-controls {
   display: none;
 }
