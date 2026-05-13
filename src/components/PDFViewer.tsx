@@ -33,7 +33,7 @@ pdfjsWithVerbosity.setVerbosityLevel?.(pdfjsWithVerbosity.VerbosityLevel?.ERRORS
 
 const PAGE_PRELOAD_RADIUS = 1;
 const SCROLL_RENDER_RADIUS = 4;
-const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const PDF_LOAD_OPTIONS = {
   disableAutoFetch: false,
   disableStream: false,
